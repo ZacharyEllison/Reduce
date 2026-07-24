@@ -14,12 +14,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Starter Kit Match-3"
+config/name="Reduce"
+config/description="Kenney Match 3 Starter adapted to the theme 'Count Down' for GMTK Game Jam July 2026"
+config/version="0.1.1"
 config/tags=PackedStringArray("starterkit")
 run/main_scene="uid://b8cjd5xlk3m1p"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/bg_color=Color(0.9254902, 0.9254902, 0.9607843, 1)
-config/icon="uid://bk67gaj8ly6sy"
+config/icon="uid://2d4u3m6gcbdy"
 boot_splash/image="uid://dfelygr7jpcpe"
 
 [autoload]
@@ -30,3 +32,7 @@ Audio="*res://scripts/audio.gd"
 
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[rendering]
+
+textures/vram_compression/import_s3tc_bptc=true

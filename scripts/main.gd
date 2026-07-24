@@ -19,7 +19,6 @@ extends Node2D
 @onready var container = $Board
 
 # State
-
 var grid = []
 var first_touch = Vector2i(-1, -1)
 var is_swapping = false
@@ -28,28 +27,19 @@ var combo_count: int = 0
 # Functions
 
 func _ready():
-	
 	set_cursor(open_hand_cursor)
-	
 	randomize()
-	
 	setup_grid_array() 
 	process_board_state()
-	
 	center_grid_on_screen() 
-	
 	get_viewport().size_changed.connect(center_grid_on_screen)
 
 # Centers the board on-screen, the above conection ensures the board is centered after resizing the window
-
-func center_grid_on_screen():
-	
+func center_grid_on_screen():	
 	container.position = get_viewport_rect().size / 2.0 - Vector2(width - 1, height - 1) * offset / 2.0
 
 # Initialize grid
-
 func setup_grid_array():
-	
 	grid = []
 	for x in width:
 		grid.append([])
@@ -57,15 +47,12 @@ func setup_grid_array():
 		grid[x].fill(null)
 		
 	# Spawn initial pieces
-	
 	for x in width:
 		for y in height:
 			spawn_at(x, y)
 
 # Spawn a new tile at a certain grid position
-
 func spawn_at(x, y):
-	
 	var created_piece = tile_scene.instantiate() 
 	var random_index = randi_range(0, textures.size() - 1)
 	
@@ -79,15 +66,12 @@ func spawn_at(x, y):
 	grid[x][y] = created_piece
 
 # Interaction
-
 func _on_tile_pressed(grid_position: Vector2i):
-	
 	if not is_swapping:
 		first_touch = grid_position
 		set_cursor(closed_hand_cursor)
 
 func _input(event):
-	
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 			if first_touch != Vector2i(-1, -1):
@@ -95,7 +79,6 @@ func _input(event):
 				calculate_swipe(local_mouse_pos)
 
 func calculate_swipe(final_pos: Vector2):
-	
 	var difference = final_pos - grid_to_pixel(first_touch.x, first_touch.y)
 	
 	if difference.length() > 32:
@@ -108,19 +91,14 @@ func calculate_swipe(final_pos: Vector2):
 		if is_within_grid(other_touch):
 			handle_swap_logic(first_touch, other_touch)
 			Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
-	
 	set_cursor(open_hand_cursor)
 	first_touch = Vector2i(-1, -1)
 
 # Game loop
-
 func handle_swap_logic(pos_a: Vector2i, pos_b: Vector2i):
-	
 	is_swapping = true
 	swap_pieces(pos_a, pos_b)
-	
 	await get_tree().create_timer(0.3).timeout
-	
 	if find_matches().size() > 0:
 		process_board_state()
 	else:
@@ -130,7 +108,6 @@ func handle_swap_logic(pos_a: Vector2i, pos_b: Vector2i):
 		is_swapping = false
 
 func swap_pieces(a: Vector2i, b: Vector2i):
-	
 	var piece_a = grid[a.x][a.y]
 	var piece_b = grid[b.x][b.y]
 	
@@ -145,9 +122,7 @@ func swap_pieces(a: Vector2i, b: Vector2i):
 		piece_b.move_to(grid_to_pixel(a.x, a.y), false)
 
 func find_matches() -> Array:
-	
 	var matched_dict = {}
-
 	for y in height:
 		for x in range(width - 2):
 			var p1 = grid[x][y]; var p2 = grid[x+1][y]; var p3 = grid[x+2][y]
@@ -163,7 +138,6 @@ func find_matches() -> Array:
 	return matched_dict.keys()
 
 func process_board_state():
-	
 	combo_count = 0 
 	var matches = find_matches()
 	
@@ -191,7 +165,6 @@ func process_board_state():
 	is_swapping = false
 
 func collapse_columns():
-	
 	for x in width:
 		for y in range(height - 1, -1, -1):
 			if grid[x][y] == null:
@@ -205,7 +178,6 @@ func collapse_columns():
 	await get_tree().create_timer(0.3).timeout
 
 func refill_board():
-	
 	for x in width:
 		for y in height:
 			if grid[x][y] == null:
@@ -215,16 +187,11 @@ func refill_board():
 	await get_tree().create_timer(0.3).timeout
 
 # Utilities for coordinates
-
 func grid_to_pixel(column: int, row: int) -> Vector2:
-	
 	return Vector2(offset * column, offset * row)
 
 func is_within_grid(pos: Vector2i) -> bool:
-	
 	return pos.x >= 0 and pos.x < width and pos.y >= 0 and pos.y < height
-
-# Utilities
 
 func set_cursor(cursor_texture: Texture2D):
 	Input.set_custom_mouse_cursor(cursor_texture, Input.CURSOR_ARROW, Vector2(16, 16))
