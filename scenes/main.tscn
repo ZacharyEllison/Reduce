@@ -26,5 +26,7 @@ offset_bottom = 720.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 texture = ExtResource("8_5vw27")
+flip_h = true
+flip_v = true
 
 [node name="Board" type="Node2D" parent="." unique_id=879210771]

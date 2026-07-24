@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://d1i8o2nh1b3a"]
+[gd_scene format=3 uid="uid://d1i8o2nh1b3a"]
 
 [ext_resource type="Script" uid="uid://behhpa56mt1uc" path="res://scripts/particles.gd" id="1_2j51h"]
 [ext_resource type="Texture2D" uid="uid://csuibxrxjmun2" path="res://sprites/particles/sparkle.png" id="1_ah5qx"]
@@ -26,14 +26,14 @@ scale_min = 0.19999999
 scale_max = 0.59999996
 scale_curve = SubResource("CurveTexture_ispy0")
 
-[node name="GPUParticles2D" type="GPUParticles2D"]
+[node name="GPUParticles2D" type="GPUParticles2D" unique_id=609544651]
 emitting = false
-amount = 4
+amount = 10
 texture = ExtResource("1_ah5qx")
 one_shot = true
-speed_scale = 2.0
-explosiveness = 0.7
-randomness = 1.0
+speed_scale = 4.0
+explosiveness = 0.6
+randomness = 0.3
 local_coords = true
 process_material = SubResource("ParticleProcessMaterial_ah5qx")
 script = ExtResource("1_2j51h")
