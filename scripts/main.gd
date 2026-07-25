@@ -16,7 +16,15 @@ extends Node2D
 @export var open_hand_cursor: Texture2D
 @export var closed_hand_cursor: Texture2D
 
+@export var directions: Dictionary[String,Vector2i] = {
+	'up': Vector2i(0,-1),
+	'down': Vector2i(0,1),
+	'left': Vector2i(-1,0),
+	'right': Vector2i(1,0)
+}
+
 @onready var container = $Board
+
 
 # State
 var grid = []
@@ -37,6 +45,9 @@ func _ready():
 # Centers the board on-screen, the above conection ensures the board is centered after resizing the window
 func center_grid_on_screen():	
 	container.position = get_viewport_rect().size / 2.0 - Vector2(width - 1, height - 1) * offset / 2.0
+	%BoardRect.position -= Vector2(offset/2,offset/2)
+	%BoardRect.size = Vector2(width, height) * offset
+	print(Vector2(width, height) * offset)
 
 # Initialize grid
 func setup_grid_array():
@@ -47,18 +58,20 @@ func setup_grid_array():
 		grid[x].fill(null)
 		
 	# Spawn initial pieces
-	for x in width:
-		for y in height:
-			spawn_at(x, y)
+	#for x in width:
+		#for y in height:
+			#spawn_at(x,y)
+	spawn_at(width-1,height-2,1024)
+	spawn_at(width-1,height-1)
 
 # Spawn a new tile at a certain grid position
-func spawn_at(x, y):
+func spawn_at(x: int, y: int, val: int=2048):
 	var created_piece = tile_scene.instantiate() 
 	var random_index = randi_range(0, textures.size() - 1)
 	
 	container.add_child(created_piece) 
 	
-	created_piece.set_tile_type(str(random_index), textures[random_index]) 
+	created_piece.set_tile_type(val, textures[0]) 
 	created_piece.tile_pressed.connect(_on_tile_pressed) 
 	created_piece.grid_position = Vector2i(x, y) 
 	created_piece.position = grid_to_pixel(x, y) 
@@ -76,30 +89,65 @@ func _input(event):
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 			if first_touch != Vector2i(-1, -1):
 				var local_mouse_pos = container.get_local_mouse_position()
-				calculate_swipe(local_mouse_pos)
+				var direction = calculate_swipe(local_mouse_pos)
+				move_all_tiles(direction)
+	elif event is InputEventKey and event.is_pressed():
+		Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
+		if event.keycode == KEY_UP:
+			move_all_tiles(directions['up'])
+		if event.keycode == KEY_DOWN:
+			move_all_tiles(directions['down'])
+		if event.keycode == KEY_LEFT:
+			move_all_tiles(directions['left'])
+		if event.keycode == KEY_RIGHT:
+			move_all_tiles(directions['right'])
 
 func calculate_swipe(final_pos: Vector2):
+	var direction: Vector2i
 	var difference = final_pos - grid_to_pixel(first_touch.x, first_touch.y)
 	
 	if difference.length() > 32:
 		var other_touch = first_touch
 		if abs(difference.x) > abs(difference.y): # Horizontal dragging
-			other_touch.x += 1 if difference.x > 0 else -1
+			if difference.x > 0: # right
+				direction = Vector2i(1,0)
+			else: # left
+				direction = Vector2i(-1,0)
 		else: # Vertical dragging
-			other_touch.y += 1 if difference.y > 0 else -1
+			if difference.y > 0: # down 
+				direction = Vector2i(0,1)
+			else: # up
+				direction = Vector2i(0,-1)
+		return direction
+	else:
+		return Vector2i(0,0)
 		
-		if is_within_grid(other_touch):
-			handle_swap_logic(first_touch, other_touch)
-			Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
 	set_cursor(open_hand_cursor)
 	first_touch = Vector2i(-1, -1)
 
+func move_tile( start_position: Vector2i, end_position:Vector2i, merge: bool ):
+	var tile = grid[start_position.x][start_position.y]
+	tile.move_to(grid_to_pixel(end_position.x,end_position.y))
+	return
+
 # Game loop
+func move_all_tiles( direction: Vector2i):
+	if direction == Vector2i(0,0):
+		return
+	Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
+	print('move called: ', directions.find_key(direction))
+	var tiles = find_tiles()
+	print('total tiles: ',tiles.size())
+	for tile in tiles:
+		var compare_position = tile.grid_position + direction
+		print(tile.grid_position, '-->', compare_position )
+
+	
 func handle_swap_logic(pos_a: Vector2i, pos_b: Vector2i):
-	is_swapping = true
-	swap_pieces(pos_a, pos_b)
-	await get_tree().create_timer(0.3).timeout
-	if find_matches().size() > 0:
+	#is_swapping = true
+	#swap_pieces(pos_a, pos_b)
+	#await get_tree().create_timer(0.3).timeout
+	if find_tiles().size() > 0:
 		process_board_state()
 	else:
 		swap_pieces(pos_a, pos_b)
@@ -121,46 +169,40 @@ func swap_pieces(a: Vector2i, b: Vector2i):
 		piece_a.move_to(grid_to_pixel(b.x, b.y), false)
 		piece_b.move_to(grid_to_pixel(a.x, a.y), false)
 
-func find_matches() -> Array:
-	var matched_dict = {}
-	for y in height:
-		for x in range(width - 2):
-			var p1 = grid[x][y]; var p2 = grid[x+1][y]; var p3 = grid[x+2][y]
-			if p1 and p2 and p3 and p1.type == p2.type and p1.type == p3.type:
-				for p in [p1, p2, p3]: matched_dict[p] = true
-
-	for x in width:
-		for y in range(height - 2):
-			var p1 = grid[x][y]; var p2 = grid[x][y+1]; var p3 = grid[x][y+2]
-			if p1 and p2 and p3 and p1.type == p2.type and p1.type == p3.type:
-				for p in [p1, p2, p3]: matched_dict[p] = true
-
-	return matched_dict.keys()
+func find_tiles() -> Array:
+	var tile_dict = {}
+	for y in range(height):
+		for x in range(width):
+			var p1 = grid[x][y]
+			if p1 and p1.type:
+				tile_dict[p1] = true
+	return tile_dict.keys()
 
 func process_board_state():
-	combo_count = 0 
-	var matches = find_matches()
+	#combo_count = 0 
+	var matches = find_tiles()
+	print(matches[0].position)
 	
-	while matches.size() > 0:
-		combo_count += 1
-		Audio.play("res://sounds/tile-match.ogg", true, 1.0 + (combo_count * 0.1))
+	#while matches.size() > 0:
+		##combo_count += 1
+		#Audio.play("res://sounds/tile-match.ogg", true, 1.0 + (combo_count * 0.1))
+		#
+		#for piece in matches:
+			#var effect = sparkles_scene.instantiate()
+			#effect.position = piece.position
+			#container.add_child(effect)
+			#
+			#grid[piece.grid_position.x][piece.grid_position.y] = null
+			#
+			#var tween = piece.create_tween()
+			#tween.tween_property(piece, "scale", Vector2.ZERO, 0.2)
+			#tween.finished.connect(piece.queue_free)
 		
-		for piece in matches:
-			var effect = sparkles_scene.instantiate()
-			effect.position = piece.position
-			container.add_child(effect)
-			
-			grid[piece.grid_position.x][piece.grid_position.y] = null
-			
-			var tween = piece.create_tween()
-			tween.tween_property(piece, "scale", Vector2.ZERO, 0.2)
-			tween.finished.connect(piece.queue_free)
+		#await get_tree().create_timer(0.3).timeout/
+		#await collapse_columns()
+		#await refill_board()
 		
-		await get_tree().create_timer(0.3).timeout
-		await collapse_columns()
-		await refill_board()
-		
-		matches = find_matches()
+		#matches = find_tiles()
 	
 	is_swapping = false
 

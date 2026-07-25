@@ -2,6 +2,7 @@ extends Area2D
 
 # The tile's color based on its value.
 @export var colors : Dictionary = {
+	1 : Color.ROYAL_BLUE,
 	2 : Color.CYAN,
 	4 : Color.AQUAMARINE,
 	8 : Color.SEA_GREEN,
@@ -17,13 +18,13 @@ extends Area2D
 
 signal tile_pressed(pos)
 
-var type:String
+var type:int
 var grid_position:Vector2i
 
 @onready var label : Label = %Label
 
-func _ready() -> void:
-	label.text = str(colors.keys()[0])
+#func _ready() -> void:
+	#label.text = str(colors.keys()[2])
 # Highlight tile when hovering mouse
 func _on_mouse_entered():
 	var tween = create_tween().set_parallel(true)
@@ -35,9 +36,11 @@ func _on_mouse_exited():
 	reset_tween()
 
 # Set piece text when initializing
-func set_tile_type(id: String, texture: Texture2D):
+func set_tile_type(id: int, texture: Texture2D):
 	type = id
 	$Sprite2D.texture = texture
+	#$Sprite2D.color = colors[id]
+	label.text = str(id)
 
 # Letting the main code know when a tile has been pressed
 func _input_event(_viewport, event, _shape_idx):
