@@ -61,7 +61,7 @@ func setup_grid_array():
 	#for x in width:
 		#for y in height:
 			#spawn_at(x,y)
-	spawn_at(width-1,height-2,1024)
+	spawn_at(width-1,height-2)
 	spawn_at(width-1,height-1)
 
 # Spawn a new tile at a certain grid position
@@ -125,9 +125,10 @@ func calculate_swipe(final_pos: Vector2):
 	set_cursor(open_hand_cursor)
 	first_touch = Vector2i(-1, -1)
 
-func move_tile( start_position: Vector2i, end_position:Vector2i, merge: bool ):
+func move_tile( start_position: Vector2i, end_position:Vector2i):
 	var tile = grid[start_position.x][start_position.y]
-	tile.move_to(grid_to_pixel(end_position.x,end_position.y))
+	if tile && tile.type:
+		tile.move_to(grid_to_pixel(end_position.x,end_position.y))
 	return
 
 # Game loop
@@ -137,12 +138,52 @@ func move_all_tiles( direction: Vector2i):
 	Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
 	print('move called: ', directions.find_key(direction))
 	var tiles = find_tiles()
-	print('total tiles: ',tiles.size())
 	for tile in tiles:
-		var compare_position = tile.grid_position + direction
-		print(tile.grid_position, '-->', compare_position )
+		var end_movement_position: Vector2i
+		print('tile position: ', tile.grid_position)
+		var compare_position: Vector2i = tile.grid_position + direction
+		while is_within_grid(compare_position):
+			print(tile.grid_position, '-->', compare_position )
+			var compare_tile = get_tile(compare_position)
+			if compare_tile: # end of line
+				if compare_tile.type == tile.type:
+					process_tile_merge(compare_tile, tile)
+				# Fall through to movement
+				end_movement_position = compare_position - direction
+				move_tile(tile.grid_position, end_movement_position)
+			compare_position += direction
+		end_movement_position = compare_position - direction
+		print(tile.grid_position, ' ', end_movement_position, )
+		move_tile(tile.grid_position, end_movement_position)
+			
 
-	
+func process_tile_merge(target, source):
+	# sparkle
+	var effect = sparkles_scene.instantiate()
+	effect.position = target.position
+	container.add_child(effect)
+	# reduce target type
+	if target.type > 1:
+		target.set_tile_type(target.type / 2, textures[0])
+	# clear source tile
+	grid[source.grid_position.x][source.grid_position.y] = null
+	# animate
+	var source_tween = source.create_tween().set_parallel(true)
+	source_tween.tween_property(source, "scale", Vector2.ZERO, 0.2)
+	source_tween.finished.connect(source.queue_free)
+	#var target_tween = target.create_tween().set_parallel(false)
+	#target_tween.set_trans(Tween.TRANS_CIRC).set_ease(Tween.EASE_IN_OUT)
+	#target_tween.tween_property(target, "scale", Vector2(1.1, 1.1), 0.02)
+	#target_tween.chain().tween_property(target, "scale", Vector2(1.0, 1.0), 0.02)
+
+
+func get_tile(pos:Vector2i) -> Variant:
+	var tile = grid[pos.x][pos.y]
+	if tile && tile.type:
+		return tile
+	else:
+		return null
+
 func handle_swap_logic(pos_a: Vector2i, pos_b: Vector2i):
 	#is_swapping = true
 	#swap_pieces(pos_a, pos_b)
@@ -193,7 +234,6 @@ func process_board_state():
 			#container.add_child(effect)
 			#
 			#grid[piece.grid_position.x][piece.grid_position.y] = null
-			#
 			#var tween = piece.create_tween()
 			#tween.tween_property(piece, "scale", Vector2.ZERO, 0.2)
 			#tween.finished.connect(piece.queue_free)
