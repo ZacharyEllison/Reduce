@@ -14,8 +14,6 @@
 
 [node name="Main" type="Node2D" unique_id=1469547217]
 script = ExtResource("1_soq6w")
-width = 4
-height = 4
 tile_scene = ExtResource("2_8q8sh")
 sparkles_scene = ExtResource("3_843fq")
 textures = Array[Texture2D]([ExtResource("4_u6af2"), ExtResource("5_opo1l"), ExtResource("6_knts7"), ExtResource("7_264yy"), ExtResource("8_bjh47")])

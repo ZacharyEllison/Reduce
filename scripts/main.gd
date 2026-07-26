@@ -1,9 +1,10 @@
 extends Node2D
 
 @export_subgroup("Properties")
-@export var width: int = 8
-@export var height: int = 8
+@export var width: int = 4
+@export var height: int = 4
 @export var offset: int = 68
+@export var default_spawn_value: int = 2048
 
 @export_subgroup("Scenes")
 @export var tile_scene: PackedScene 
@@ -16,264 +17,377 @@ extends Node2D
 @export var open_hand_cursor: Texture2D
 @export var closed_hand_cursor: Texture2D
 
-@export var directions: Dictionary[String,Vector2i] = {
-	'up': Vector2i(0,-1),
-	'down': Vector2i(0,1),
-	'left': Vector2i(-1,0),
-	'right': Vector2i(1,0)
+const DIRECTIONS = {
+	"up": Vector2i(0, -1),
+	"down": Vector2i(0, 1),
+	"left": Vector2i(-1, 0),
+	"right": Vector2i(1, 0)
 }
 
-@onready var container = $Board
+@onready var container: Node2D = $Board
+
+# Game Over Canvas Layer & Centered UI
+var game_over_layer: CanvasLayer
+var game_over_panel: PanelContainer
+var score_label: Label
+var game_over_title: Label
+var retry_button: Button
+
+# Board State
+var grid: Array = []
+var first_touch: Vector2i = Vector2i(-1, -1)
+var is_moving: bool = false
+var is_game_over: bool = false
 
 
-# State
-var grid = []
-var first_touch = Vector2i(-1, -1)
-var is_swapping = false
-var combo_count: int = 0
-
-# Functions
-
-func _ready():
+func _ready() -> void:
 	set_cursor(open_hand_cursor)
 	randomize()
-	setup_grid_array() 
-	process_board_state()
-	center_grid_on_screen() 
+	setup_grid_array()
+	setup_game_over_ui()
+	center_grid_on_screen()
 	get_viewport().size_changed.connect(center_grid_on_screen)
+	
+	# Spawn initial tiles
+	spawn_random_tile()
+	spawn_random_tile()
 
-# Centers the board on-screen, the above conection ensures the board is centered after resizing the window
-func center_grid_on_screen():	
-	container.position = get_viewport_rect().size / 2.0 - Vector2(width - 1, height - 1) * offset / 2.0
-	%BoardRect.position -= Vector2(offset/2,offset/2)
-	%BoardRect.size = Vector2(width, height) * offset
-	print(Vector2(width, height) * offset)
 
-# Initialize grid
-func setup_grid_array():
+func setup_grid_array() -> void:
 	grid = []
 	for x in width:
-		grid.append([])
-		grid[x].resize(height)
-		grid[x].fill(null)
-		
-	# Spawn initial pieces
-	#for x in width:
-		#for y in height:
-			#spawn_at(x,y)
-	spawn_at(width-1,height-2)
-	spawn_at(width-1,height-1)
+		var col = []
+		col.resize(height)
+		col.fill(null)
+		grid.append(col)
 
-# Spawn a new tile at a certain grid position
-func spawn_at(x: int, y: int, val: int=2048):
-	var created_piece = tile_scene.instantiate() 
-	var random_index = randi_range(0, textures.size() - 1)
+
+# Centers the board container and locks the Game Over panel directly to its size/position
+func center_grid_on_screen() -> void:
+	var board_size = Vector2(width, height) * offset
+	var board_pos = get_viewport_rect().size / 2.0 - Vector2(width - 1, height - 1) * offset / 2.0
 	
-	container.add_child(created_piece) 
+	container.position = board_pos
 	
-	created_piece.set_tile_type(val, textures[0]) 
-	created_piece.tile_pressed.connect(_on_tile_pressed) 
-	created_piece.grid_position = Vector2i(x, y) 
-	created_piece.position = grid_to_pixel(x, y) 
-	
+	if has_node("%BoardRect"):
+		%BoardRect.position = -Vector2(offset / 2.0, offset / 2.0)
+		%BoardRect.size = board_size
+
+	# Align Game Over Card to match the exact size and position of the board
+	if game_over_panel:
+		var top_left = board_pos - Vector2(offset / 2.0, offset / 2.0)
+		game_over_panel.position = top_left
+		game_over_panel.custom_minimum_size = board_size
+		game_over_panel.size = board_size
+
+
+# --- Centered Game Over UI Setup ---
+
+func setup_game_over_ui() -> void:
+	game_over_layer = CanvasLayer.new()
+	add_child(game_over_layer)
+
+	# Main Card Panel directly overlaying board
+	game_over_panel = PanelContainer.new()
+	game_over_panel.modulate = Color(1, 1, 1, 0)
+	game_over_panel.hide()
+	game_over_layer.add_child(game_over_panel)
+
+	# Style panel dark semi-transparent card background
+	var style_box = StyleBoxFlat.new()
+	style_box.bg_color = Color(0, 0, 0, 0.85)
+	style_box.set_corner_radius_all(12)
+	game_over_panel.add_theme_stylebox_override("panel", style_box)
+
+	# Centered vertical layout container
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 12)
+	game_over_panel.add_child(vbox)
+
+	# Game Over Title
+	game_over_title = Label.new()
+	game_over_title.text = "GAME OVER"
+	game_over_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	game_over_title.add_theme_font_size_override("font_size", 32)
+	game_over_title.modulate = Color.DEEP_PINK
+	vbox.add_child(game_over_title)
+
+	# Final Score Display
+	score_label = Label.new()
+	score_label.text = "Score: 0"
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_label.add_theme_font_size_override("font_size", 20)
+	vbox.add_child(score_label)
+
+	# Retry Button
+	retry_button = Button.new()
+	retry_button.text = "Try Again"
+	retry_button.custom_minimum_size = Vector2(120, 36)
+	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	retry_button.pressed.connect(_on_retry_pressed)
+	vbox.add_child(retry_button)
+
+
+# --- Spawning ---
+
+func spawn_at(x: int, y: int, val: int = default_spawn_value) -> void:
+	if not is_within_grid(Vector2i(x, y)) or grid[x][y] != null:
+		return
+
+	var created_piece = tile_scene.instantiate()
+	container.add_child(created_piece)
+
+	var tex = textures[0] if textures.size() > 0 else null
+	if created_piece.has_method("set_tile_type"):
+		created_piece.set_tile_type(val, tex)
+	elif "type" in created_piece:
+		created_piece.type = val
+
+	if created_piece.has_signal("tile_pressed"):
+		created_piece.tile_pressed.connect(_on_tile_pressed)
+
+	created_piece.grid_position = Vector2i(x, y)
+	created_piece.position = grid_to_pixel(x, y)
 	grid[x][y] = created_piece
 
-# Interaction
-func _on_tile_pressed(grid_position: Vector2i):
-	if not is_swapping:
-		first_touch = grid_position
+
+func spawn_random_tile() -> void:
+	var empty_cells = []
+	for x in width:
+		for y in height:
+			if grid[x][y] == null:
+				empty_cells.append(Vector2i(x, y))
+
+	if empty_cells.is_empty():
+		return
+
+	var pos = empty_cells.pick_random()
+	var spawn_val = 2048 if randf() < 0.9 else 1024
+	spawn_at(pos.x, pos.y, spawn_val)
+
+
+# --- Input Handling ---
+
+func _on_tile_pressed(grid_pos: Vector2i) -> void:
+	if not is_moving and not is_game_over:
+		first_touch = grid_pos
 		set_cursor(closed_hand_cursor)
 
-func _input(event):
+
+func _input(event: InputEvent) -> void:
+	if is_moving or is_game_over:
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 			if first_touch != Vector2i(-1, -1):
 				var local_mouse_pos = container.get_local_mouse_position()
 				var direction = calculate_swipe(local_mouse_pos)
-				move_all_tiles(direction)
-	elif event is InputEventKey and event.is_pressed():
-		Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
-		if event.keycode == KEY_UP:
-			move_all_tiles(directions['up'])
-		if event.keycode == KEY_DOWN:
-			move_all_tiles(directions['down'])
-		if event.keycode == KEY_LEFT:
-			move_all_tiles(directions['left'])
-		if event.keycode == KEY_RIGHT:
-			move_all_tiles(directions['right'])
+				if direction != Vector2i.ZERO:
+					move_all_tiles(direction)
+				set_cursor(open_hand_cursor)
+				first_touch = Vector2i(-1, -1)
 
-func calculate_swipe(final_pos: Vector2):
-	var direction: Vector2i
-	var difference = final_pos - grid_to_pixel(first_touch.x, first_touch.y)
-	
+	elif event is InputEventKey and event.is_pressed() and not event.is_echo():
+		var direction = Vector2i.ZERO
+		match event.keycode:
+			KEY_UP: direction = DIRECTIONS["up"]
+			KEY_DOWN: direction = DIRECTIONS["down"]
+			KEY_LEFT: direction = DIRECTIONS["left"]
+			KEY_RIGHT: direction = DIRECTIONS["right"]
+
+		if direction != Vector2i.ZERO:
+			move_all_tiles(direction)
+
+
+func calculate_swipe(final_pos: Vector2) -> Vector2i:
+	var start_pixel = grid_to_pixel(first_touch.x, first_touch.y)
+	var difference = final_pos - start_pixel
+
 	if difference.length() > 32:
-		var other_touch = first_touch
-		if abs(difference.x) > abs(difference.y): # Horizontal dragging
-			if difference.x > 0: # right
-				direction = Vector2i(1,0)
-			else: # left
-				direction = Vector2i(-1,0)
-		else: # Vertical dragging
-			if difference.y > 0: # down 
-				direction = Vector2i(0,1)
-			else: # up
-				direction = Vector2i(0,-1)
-		return direction
-	else:
-		return Vector2i(0,0)
-		
-	set_cursor(open_hand_cursor)
-	first_touch = Vector2i(-1, -1)
-
-func move_tile( start_position: Vector2i, end_position:Vector2i):
-	var tile = grid[start_position.x][start_position.y]
-	if tile && tile.type:
-		tile.move_to(grid_to_pixel(end_position.x,end_position.y))
-	return
-
-# Game loop
-func move_all_tiles( direction: Vector2i):
-	if direction == Vector2i(0,0):
-		return
-	Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
-	print('move called: ', directions.find_key(direction))
-	var tiles = find_tiles()
-	for tile in tiles:
-		var end_movement_position: Vector2i
-		print('tile position: ', tile.grid_position)
-		var compare_position: Vector2i = tile.grid_position + direction
-		while is_within_grid(compare_position):
-			print(tile.grid_position, '-->', compare_position )
-			var compare_tile = get_tile(compare_position)
-			if compare_tile: # end of line
-				if compare_tile.type == tile.type:
-					process_tile_merge(compare_tile, tile)
-				# Fall through to movement
-				end_movement_position = compare_position - direction
-				move_tile(tile.grid_position, end_movement_position)
-			compare_position += direction
-		end_movement_position = compare_position - direction
-		print(tile.grid_position, ' ', end_movement_position, )
-		move_tile(tile.grid_position, end_movement_position)
+		if abs(difference.x) > abs(difference.y):
+			return Vector2i(1, 0) if difference.x > 0 else Vector2i(-1, 0)
+		else:
+			return Vector2i(0, 1) if difference.y > 0 else Vector2i(0, -1)
 			
-
-func process_tile_merge(target, source):
-	# sparkle
-	var effect = sparkles_scene.instantiate()
-	effect.position = target.position
-	container.add_child(effect)
-	# reduce target type
-	if target.type > 1:
-		target.set_tile_type(target.type / 2, textures[0])
-	# clear source tile
-	grid[source.grid_position.x][source.grid_position.y] = null
-	# animate
-	var source_tween = source.create_tween().set_parallel(true)
-	source_tween.tween_property(source, "scale", Vector2.ZERO, 0.2)
-	source_tween.finished.connect(source.queue_free)
-	#var target_tween = target.create_tween().set_parallel(false)
-	#target_tween.set_trans(Tween.TRANS_CIRC).set_ease(Tween.EASE_IN_OUT)
-	#target_tween.tween_property(target, "scale", Vector2(1.1, 1.1), 0.02)
-	#target_tween.chain().tween_property(target, "scale", Vector2(1.0, 1.0), 0.02)
+	return Vector2i.ZERO
 
 
-func get_tile(pos:Vector2i) -> Variant:
-	var tile = grid[pos.x][pos.y]
-	if tile && tile.type:
-		return tile
-	else:
-		return null
+# --- Core Game Loop ---
 
-func handle_swap_logic(pos_a: Vector2i, pos_b: Vector2i):
-	#is_swapping = true
-	#swap_pieces(pos_a, pos_b)
-	#await get_tree().create_timer(0.3).timeout
-	if find_tiles().size() > 0:
-		process_board_state()
-	else:
-		swap_pieces(pos_a, pos_b)
-		Audio.play("res://sounds/tile-swap.ogg", false, 2, 0.3)
-		await get_tree().create_timer(0.3).timeout
-		is_swapping = false
+func move_all_tiles(direction: Vector2i) -> void:
+	if direction == Vector2i.ZERO:
+		return
 
-func swap_pieces(a: Vector2i, b: Vector2i):
-	var piece_a = grid[a.x][a.y]
-	var piece_b = grid[b.x][b.y]
-	
-	if piece_a and piece_b:
-		grid[a.x][a.y] = piece_b
-		grid[b.x][b.y] = piece_a
+	is_moving = true
+	var board_changed = false
+	var merged_tiles = []
+
+	var x_range = range(width)
+	var y_range = range(height)
+
+	if direction.x > 0: x_range = range(width - 1, -1, -1)
+	if direction.y > 0: y_range = range(height - 1, -1, -1)
+
+	for x in x_range:
+		for y in y_range:
+			var tile = grid[x][y]
+			if tile == null:
+				continue
+
+			var current = Vector2i(x, y)
+			var next = current + direction
+
+			while is_within_grid(next) and grid[next.x][next.y] == null:
+				current = next
+				next += direction
+
+			if is_within_grid(next):
+				var target_tile = grid[next.x][next.y]
+				if target_tile != null and target_tile.type == tile.type and not target_tile in merged_tiles:
+					grid[x][y] = null
+					var new_value = max(1, target_tile.type / 2)
+
+					if tile.has_method("move_to"):
+						tile.move_to(grid_to_pixel(next.x, next.y))
+					else:
+						tile.position = grid_to_pixel(next.x, next.y)
+
+					process_tile_merge(target_tile, tile, new_value)
+					merged_tiles.append(target_tile)
+					board_changed = true
+					continue
+
+			if current != Vector2i(x, y):
+				grid[x][y] = null
+				grid[current.x][current.y] = tile
+				tile.grid_position = current
+				
+				if tile.has_method("move_to"):
+					tile.move_to(grid_to_pixel(current.x, current.y))
+				else:
+					tile.position = grid_to_pixel(current.x, current.y)
+					
+				board_changed = true
+
+	if board_changed:
+		if Audio.has_method("play"):
+			Audio.play("res://sounds/tile-swap.ogg", false, randf_range(0.8, 1.2), 0.3)
+		await get_tree().create_timer(0.15).timeout
 		
-		piece_a.grid_position = b
-		piece_b.grid_position = a
+		spawn_random_tile()
 		
-		piece_a.move_to(grid_to_pixel(b.x, b.y), false)
-		piece_b.move_to(grid_to_pixel(a.x, a.y), false)
+		if check_game_over():
+			trigger_game_over()
 
-func find_tiles() -> Array:
-	var tile_dict = {}
-	for y in range(height):
-		for x in range(width):
-			var p1 = grid[x][y]
-			if p1 and p1.type:
-				tile_dict[p1] = true
-	return tile_dict.keys()
+	is_moving = false
 
-func process_board_state():
-	#combo_count = 0 
-	var matches = find_tiles()
-	print(matches[0].position)
-	
-	#while matches.size() > 0:
-		##combo_count += 1
-		#Audio.play("res://sounds/tile-match.ogg", true, 1.0 + (combo_count * 0.1))
-		#
-		#for piece in matches:
-			#var effect = sparkles_scene.instantiate()
-			#effect.position = piece.position
-			#container.add_child(effect)
-			#
-			#grid[piece.grid_position.x][piece.grid_position.y] = null
-			#var tween = piece.create_tween()
-			#tween.tween_property(piece, "scale", Vector2.ZERO, 0.2)
-			#tween.finished.connect(piece.queue_free)
-		
-		#await get_tree().create_timer(0.3).timeout/
-		#await collapse_columns()
-		#await refill_board()
-		
-		#matches = find_tiles()
-	
-	is_swapping = false
 
-func collapse_columns():
-	for x in width:
-		for y in range(height - 1, -1, -1):
-			if grid[x][y] == null:
-				for k in range(y - 1, -1, -1):
-					if grid[x][k] != null:
-						grid[x][y] = grid[x][k]
-						grid[x][k] = null
-						grid[x][y].grid_position = Vector2i(x, y)
-						grid[x][y].move_to(grid_to_pixel(x, y))
-						break
-	await get_tree().create_timer(0.3).timeout
+func process_tile_merge(target: Node2D, source: Node2D, new_value: int) -> void:
+	if sparkles_scene:
+		var effect = sparkles_scene.instantiate()
+		effect.position = grid_to_pixel(target.grid_position.x, target.grid_position.y)
+		container.add_child(effect)
 
-func refill_board():
+	var tex = textures[0] if textures.size() > 0 else null
+	if target.has_method("set_tile_type"):
+		target.set_tile_type(new_value, tex)
+	elif "type" in target:
+		target.type = new_value
+
+	var tween = source.create_tween()
+	tween.tween_property(source, "scale", Vector2.ZERO, 0.15)
+	tween.finished.connect(source.queue_free)
+
+
+# --- Game Over, Scoring & Reset ---
+
+func check_game_over() -> bool:
 	for x in width:
 		for y in height:
 			if grid[x][y] == null:
-				spawn_at(x, y)
-				grid[x][y].position.y -= offset * 2 
-				grid[x][y].move_to(grid_to_pixel(x, y))
-	await get_tree().create_timer(0.3).timeout
+				return false
 
-# Utilities for coordinates
-func grid_to_pixel(column: int, row: int) -> Vector2:
-	return Vector2(offset * column, offset * row)
+	for x in width:
+		for y in height:
+			var current_tile = grid[x][y]
+			if current_tile == null:
+				continue
+			
+			var check_directions = [Vector2i(1, 0), Vector2i(0, 1)]
+			for dir in check_directions:
+				var neighbor_pos = Vector2i(x, y) + dir
+				if is_within_grid(neighbor_pos):
+					var neighbor_tile = grid[neighbor_pos.x][neighbor_pos.y]
+					if neighbor_tile != null and neighbor_tile.type == current_tile.type:
+						return false
+
+	return true
+
+
+func calculate_total_score() -> int:
+	var total_score: int = 0
+	for x in width:
+		for y in height:
+			var tile = grid[x][y]
+			if tile != null:
+				total_score += tile.type
+	return total_score
+
+
+func trigger_game_over() -> void:
+	is_game_over = true
+	var final_score = calculate_total_score()
+	score_label.text = "Score: " + str(final_score)
+
+	set_cursor(open_hand_cursor)
+	game_over_panel.show()
+
+	# Pivot UI card scaling from center
+	game_over_panel.pivot_offset = game_over_panel.size / 2.0
+	game_over_panel.scale = Vector2(0.8, 0.8)
+
+	var tween = create_tween().set_parallel(true)
+	tween.tween_property(game_over_panel, "modulate", Color.WHITE, 0.3)\
+		.set_trans(Tween.TRANS_CUBIC)\
+		.set_ease(Tween.EASE_OUT)
+	tween.tween_property(game_over_panel, "scale", Vector2.ONE, 0.3)\
+		.set_trans(Tween.TRANS_BACK)\
+		.set_ease(Tween.EASE_OUT)
+
+
+func _on_retry_pressed() -> void:
+	# Fade out Game Over UI
+	var tween = create_tween()
+	tween.tween_property(game_over_panel, "modulate", Color(1, 1, 1, 0), 0.2)
+	await tween.finished
+	game_over_panel.hide()
+
+	# Clear active tiles
+	for child in container.get_children():
+		if child != get_node_or_null("%BoardRect"):
+			child.queue_free()
+
+	setup_grid_array()
+	is_game_over = false
+
+	# Respawn initial board
+	spawn_random_tile()
+	spawn_random_tile()
+
+
+# --- Helpers ---
 
 func is_within_grid(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < width and pos.y >= 0 and pos.y < height
 
-func set_cursor(cursor_texture: Texture2D):
-	Input.set_custom_mouse_cursor(cursor_texture, Input.CURSOR_ARROW, Vector2(16, 16))
+
+func grid_to_pixel(col: int, row: int) -> Vector2:
+	return Vector2(col * offset, row * offset)
+
+
+func set_cursor(cursor_texture: Texture2D) -> void:
+	if cursor_texture:
+		Input.set_custom_mouse_cursor(cursor_texture, Input.CURSOR_ARROW, Vector2(16, 16))
